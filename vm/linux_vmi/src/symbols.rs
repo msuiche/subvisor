@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+// Copyright (c) Matt Suiche.
 // Licensed under the MIT License.
 
 //! Kernel symbol tables in `/proc/kallsyms` or `System.map` format.

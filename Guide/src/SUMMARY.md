@@ -12,6 +12,7 @@
   - [Troubleshooting](./user_guide/openvmm/troubleshooting.md)
   - [Snapshots](./user_guide/openvmm/snapshots.md)
   - [VM Memory Dumps](./user_guide/openvmm/vm_memory_dumps.md)
+  - [Guest Introspection](./user_guide/openvmm/vm_introspection.md)
   - [Next Steps](./user_guide/openvmm/next_steps.md)
 - [OpenHCL](./user_guide/openhcl.md)
   - [Running OpenHCL](./user_guide/openhcl/run.md)

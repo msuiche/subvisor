@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+// Copyright (c) Matt Suiche.
 // Licensed under the MIT License.
 
 //! Guest page table walking for kernel virtual addresses.
@@ -90,8 +90,8 @@ impl<'a> Translator<'a> {
                 .read_phys(page, &mut buf)
                 .map_err(|source| Error::Read { gpa: page, source })?;
             let mut entries = Box::new([0u64; 512]);
-            for (entry, bytes) in entries.iter_mut().zip(buf.chunks_exact(8)) {
-                *entry = u64::from_le_bytes(bytes.try_into().unwrap());
+            for (entry, bytes) in entries.iter_mut().zip(buf.as_chunks::<8>().0) {
+                *entry = u64::from_le_bytes(*bytes);
             }
             self.tables.insert(page, entries);
         }

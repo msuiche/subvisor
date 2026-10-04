@@ -1,48 +1,136 @@
-# OpenVMM
+# Subvisor
 
-[![Build Status](https://github.com/microsoft/openvmm/actions/workflows/openvmm-ci.yaml/badge.svg?branch=main)](https://github.com/microsoft/openvmm/actions/workflows/openvmm-ci.yaml)
+[![Subvisor CI](https://github.com/msuiche/subvisor/actions/workflows/subvisor-ci.yml/badge.svg?branch=main)](https://github.com/msuiche/subvisor/actions/workflows/subvisor-ci.yml)
 
-OpenVMM is a modular, cross-platform Virtual Machine Monitor (VMM), written in
-Rust.
+Subvisor monitors a running Linux virtual machine from underneath it. It reads
+the guest's memory and CPU state from the virtual machine monitor, walks the
+guest's page tables itself, and checks the kernel for tampering. Nothing runs
+inside the guest, so a compromised kernel cannot hide from it or turn it off.
 
-Although it can function as a traditional VMM, OpenVMM's development is
-currently focused on its role in the OpenHCL paravisor.
+It is built on [OpenVMM](https://github.com/microsoft/openvmm), Microsoft's
+open-source VMM written in Rust. This repository is a fork of OpenVMM with the
+introspection layer added.
 
-This repo is the home for both projects.
+> Status: early and experimental. The checks below work end to end on an
+> arm64 Linux guest under macOS (Hypervisor.framework). Expect changes.
 
-For more information, read our [guide](https://openvmm.dev/)
-or our [introductory blog post](https://techcommunity.microsoft.com/t5/windows-os-platform-blog/openhcl-the-new-open-source-paravisor/ba-p/4273172).
+## What it checks
 
-## Getting Started
+The first scan records a baseline. Every later scan reports what changed:
 
-For info on how to run, build, and use OpenVMM, check out the [The OpenVMM Guide][].
+| Check | What it catches |
+|---|---|
+| Kernel text, hashed per 4KiB page (SHA-256) | Inline hooks and patched kernel code |
+| Kernel rodata, hashed per page | Changes to read-only kernel data, including tables kernel code depends on |
+| `sys_call_table` entries | Syscall hooks: entries that point outside kernel text or differ from the baseline |
+| Page mappings | Text or rodata pages that become mapped or unmapped |
 
-The guide is published out of this repo via [Markdown files](Guide/src/SUMMARY.md).
-Please keep them up-to-date.
+Findings name the kernel symbol involved, for example:
 
-The maintainers of this project use Discord to collaborate with external contributors and users.
-Please [join](https://aka.ms/openvmmdiscord) if you have any questions about contributing to or using OpenVMM/OpenHCL.
+```text
+scan: 3 finding(s)
+  text: 3152 pages at 0xffffffc080010000 (gpa 0x41210000), 0 unmapped
+  rodata: 974 pages at 0xffffffc080c60000 (gpa 0x41e60000), 0 unmapped
+  sys_call_table: 470 entries (gpa 0x41e60be8)
+  text page 0xffffffc080183000 (acct_write_process+0xe4) modified
+  rodata page 0xffffffc080c60000 (__start_rodata) modified
+  sys_call_table[89] changed: __arm64_sys_acct -> __arm64_sys_io_setup
+```
 
-[The OpenVMM Guide]: https://aka.ms/openvmmguide
+A scan of about 4,100 pages and 470 syscall entries takes roughly 0.25 seconds.
 
-## Contributing
+## How it works
 
-This project welcomes contributions and suggestions.  Most contributions require you to agree to a
-Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
-the rights to use your contribution. For details, visit [Contributor License Agreements](https://cla.opensource.microsoft.com).
+```text
+ guest kernel (untrusted)
+ ─────────────────────────────────────────────
+ OpenVMM partition ──debug requests──▶ vmi_worker ──▶ linux_vmi engine
+   (guest RAM, VP registers)          (own process)   (page walk, hashing,
+                                                       symbol resolution)
+```
 
-When you submit a pull request, a CLA bot will automatically determine whether you need to provide
-a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
-provided by the bot. You will only need to do this once across all repos using our CLA.
+- **`vm/linux_vmi`**: the engine. It needs only two things from its host: a way
+  to read guest physical memory, and the paging root from VP registers
+  (`TTBR1_EL1`/`TCR_EL1` on arm64, `CR3`/`CR4` on x86-64). It has no OpenVMM
+  dependencies, so it can later run inside a paravisor (OpenHCL VTL2,
+  COCONUT-SVSM) or against a memory dump.
+- **`workers/vmi_worker`**: an OpenVMM worker that runs the engine periodically
+  and on demand. It shares the debug request channel used by OpenVMM's gdbstub,
+  so the VM core is unchanged.
+- **OpenVMM integration**: the `--vmi-symbols` and `--vmi-interval` flags, and
+  the `vmi-scan` command in the interactive console.
 
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
-contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+## Quick start
 
-## Trademarks
+Requires Rust and, on macOS, Xcode command line tools. From the repository root:
 
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
-trademarks or logos is subject to and must follow
-[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/legal/intellectualproperty/trademarks/usage/general).
-Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
-Any use of third-party trademarks or logos are subject to those third-party's policies.
+```shell
+cargo xflowey restore-packages   # build tools and the Linux test guest
+cargo build -p openvmm
+python3 scripts/subvisor_e2e.py  # boots the test guest and runs the checks
+```
+
+The script boots the bundled Linux test guest, captures its `/proc/kallsyms`,
+takes a baseline, modifies a syscall handler and its table entry through
+OpenVMM's `write-memory` command, and confirms both changes are detected while
+the guest keeps running.
+
+To use it with your own guest:
+
+```shell
+openvmm --vmi-symbols kallsyms.txt --vmi-interval 30 <usual VM options>
+```
+
+- `kallsyms.txt` is the guest's `/proc/kallsyms` (read as root, from the same
+  boot because of KASLR) or the kernel's `System.map`. It is read on the first
+  scan, so you can copy it out after the guest boots.
+- Periodic scans log findings as warnings. Press Ctrl-Q for the OpenVMM
+  console, then run `vmi-scan` (or `vmi-scan --reset` to take a new baseline).
+
+More detail: [Guest Introspection](Guide/src/user_guide/openvmm/vm_introspection.md).
+
+## Limitations
+
+- **The guest supplies the symbols.** A compromised kernel could falsify
+  `/proc/kallsyms`. Recovering the symbol table directly from guest memory is
+  next on the list.
+- **Per-page findings.** A finding names the symbol at the start of the
+  modified page, not necessarily the modified function.
+- **No process or module checks yet.** Walking kernel structures needs type
+  information (BTF), which the test kernel does not include.
+- **Live reads.** Memory is read while the guest runs, so a single finding can
+  be a page caught mid-update. Rescan before acting on it.
+- **x86-64 is only unit-tested.** The page walker supports it, but only arm64
+  has been tested against a real guest.
+
+## Roadmap
+
+1. Recover kallsyms from guest memory, removing the dependency on
+   guest-supplied symbols.
+2. Byte-level diffs against a stored baseline, giving the exact offset plus
+   original and modified bytes.
+3. Process, module, and eBPF cross-view checks using in-memory BTF.
+4. Event telemetry from hardware breakpoints that does not stop the guest.
+5. Run the engine inside a paravisor (OpenHCL VTL2 or COCONUT-SVSM) to monitor
+   confidential VMs, where the host cannot read guest memory.
+
+## Repository layout
+
+Everything outside the paths below is upstream OpenVMM. The fork tracks
+`microsoft/openvmm` and is rebased onto it periodically.
+
+| Path | Contents |
+|---|---|
+| `vm/linux_vmi/` | Introspection engine |
+| `workers/vmi_worker/`, `workers/vmi_worker_defs/` | OpenVMM worker and its definitions |
+| `openvmm/openvmm_entry/` | CLI flags, `vmi-scan` command, worker launch |
+| `scripts/subvisor_e2e.py` | End-to-end test |
+| `.github/workflows/subvisor-ci.yml` | CI for the Subvisor crates |
+
+The OpenVMM workflows inherited from upstream are disabled in this repository:
+they rely on Microsoft's self-hosted runners and secrets.
+
+## License
+
+MIT, like OpenVMM. See [LICENSE](LICENSE). Subvisor code is Copyright (c) Matt
+Suiche; OpenVMM code is Copyright (c) Microsoft Corporation.

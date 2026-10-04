@@ -1,0 +1,64 @@
+# Copyright (c) Matt Suiche.
+# Licensed under the MIT License.
+
+name: Subvisor CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: build, clippy, and test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install protoc
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update && sudo apt-get install -y protobuf-compiler
+          else
+            brew install protobuf
+          fi
+          # Override the repo-relative PROTOC path set in .cargo/config.toml.
+          echo "PROTOC=$(command -v protoc)" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        shell: bash
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt -p linux_vmi -p vmi_worker -p vmi_worker_defs --check
+
+      - name: Clippy
+        shell: bash
+        run: |
+          # Fail only on warnings in Subvisor code; upstream crates may warn
+          # on newer toolchains.
+          cargo clippy --all-targets -p linux_vmi -p vmi_worker -p vmi_worker_defs 2>&1 | tee clippy.log
+          if grep -E -- '--> (vm/linux_vmi|workers/vmi_worker)' clippy.log; then
+            echo "clippy warnings in Subvisor crates"
+            exit 1
+          fi
+
+      - name: Unit tests
+        run: cargo test -p linux_vmi

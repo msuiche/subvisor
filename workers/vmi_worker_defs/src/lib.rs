@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+// Copyright (c) Matt Suiche.
 // Licensed under the MIT License.
 
 //! Client definitions for the VM introspection worker.

@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+// Copyright (c) Matt Suiche.
 // Licensed under the MIT License.
 
 //! Passive kernel integrity scanner.
@@ -26,6 +26,8 @@ const PAGE_SIZE: u64 = 4096;
 const MAX_RUN: u64 = 1024 * 1024;
 /// Upper bound on the number of system call table entries.
 const MAX_SYSCALLS: u64 = 2048;
+/// Upper bound on the size of a hashed region.
+const MAX_REGION: u64 = 1 << 30;
 
 type PageHash = [u8; 32];
 
@@ -45,32 +47,41 @@ struct Layout {
     syscall_table: Option<(u64, u64)>,
 }
 
+impl Region {
+    /// Builds a page-aligned region, rejecting empty, inverted, or oversized
+    /// ranges. The symbols come from the guest, so they are not trusted.
+    fn new(name: &'static str, start: u64, end: u64) -> Result<Self, Error> {
+        let start = start & !(PAGE_SIZE - 1);
+        let end = end
+            .checked_next_multiple_of(PAGE_SIZE)
+            .ok_or(Error::InvalidRegion(name))?;
+        if start >= end || end - start > MAX_REGION {
+            return Err(Error::InvalidRegion(name));
+        }
+        Ok(Self { name, start, end })
+    }
+}
+
 impl Layout {
     fn new(symbols: &SymbolTable) -> Result<Self, Error> {
         let sym = |name: &'static str| symbols.addr(name).ok_or(Error::MissingSymbol(name));
         let stext = sym("_stext")?;
         let etext = sym("_etext")?;
-        let mut regions = vec![Region {
-            name: "text",
-            start: stext & !(PAGE_SIZE - 1),
-            end: etext.next_multiple_of(PAGE_SIZE),
-        }];
+        let mut regions = vec![Region::new("text", stext, etext)?];
         if let (Some(start), Some(end)) =
             (symbols.addr("__start_rodata"), symbols.addr("__end_rodata"))
         {
-            regions.push(Region {
-                name: "rodata",
-                start: start & !(PAGE_SIZE - 1),
-                end: end.next_multiple_of(PAGE_SIZE),
-            });
+            regions.push(Region::new("rodata", start, end)?);
         }
 
         let syscall_table = symbols.addr("sys_call_table").map(|addr| {
-            let end = symbols
+            let count = symbols
                 .next_addr_after("sys_call_table")
-                .unwrap_or(addr + MAX_SYSCALLS * 8);
-            (addr, ((end - addr) / 8).min(MAX_SYSCALLS))
+                .map_or(MAX_SYSCALLS, |end| (end - addr) / 8);
+            (addr, count.min(MAX_SYSCALLS))
         });
+        let syscall_table =
+            syscall_table.filter(|&(addr, count)| addr.checked_add(count * 8).is_some());
 
         Ok(Self {
             regions,
@@ -370,7 +381,12 @@ fn hash_region(t: &mut Translator<'_>, region: &Region) -> Result<Vec<Option<Pag
         t.mem()
             .read_phys(start, &mut buf)
             .map_err(|source| Error::Read { gpa: start, source })?;
-        for (j, page) in buf.chunks_exact(PAGE_SIZE as usize).enumerate() {
+        for (j, page) in buf
+            .as_chunks::<{ PAGE_SIZE as usize }>()
+            .0
+            .iter()
+            .enumerate()
+        {
             hashes[i + j] = Some(Sha256::digest(page).into());
         }
         i += n;
@@ -392,8 +408,10 @@ fn read_u64s(t: &mut Translator<'_>, va: u64, count: u64) -> Result<Vec<u64>, Er
         done += len;
     }
     Ok(bytes
-        .chunks_exact(8)
-        .map(|b| u64::from_le_bytes(b.try_into().unwrap()))
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|b| u64::from_le_bytes(*b))
         .collect())
 }
 
@@ -492,6 +510,20 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn rejects_invalid_layout() {
+        let inverted = SymbolTable::parse("ffffffc008800000 T _stext\nffffffc008000000 T _etext\n");
+        assert!(matches!(
+            Scanner::new(inverted),
+            Err(Error::InvalidRegion("text"))
+        ));
+        let huge = SymbolTable::parse("ffffffc000000000 T _stext\nfffffffffffff000 T _etext\n");
+        assert!(matches!(
+            Scanner::new(huge),
+            Err(Error::InvalidRegion("text"))
+        ));
     }
 
     #[test]

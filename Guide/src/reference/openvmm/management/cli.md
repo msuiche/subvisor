@@ -365,6 +365,13 @@ a supervisor can tell the exit reasons apart.
   host-side, whole-VM dump, distinct from `--openhcl-dump-path` (OpenHCL's
   in-guest crash dump device driven by the guest OS).
 
+* `--vmi-symbols <PATH>`: enable passive Linux kernel introspection, using guest
+  kernel symbols in `/proc/kallsyms` or `System.map` format. The file is read on
+  the first scan, so it can be created after the VM starts (see
+  [Guest Introspection](../../../user_guide/openvmm/vm_introspection.md)).
+* `--vmi-interval <SECS>` (default `30`): seconds between periodic
+  introspection scans, or `0` to scan only with the `vmi-scan` command.
+
 The `--uefi disable_frontpage` option powers the VM off instead of showing the
 firmware frontpage when there is no bootable device. Combined with
 `--guest-shutdown-action exit`, a guest with no boot device exits the VMM.

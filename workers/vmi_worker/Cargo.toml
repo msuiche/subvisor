@@ -14,6 +14,7 @@ vmm_core_defs.workspace = true
 mesh.workspace = true
 mesh_worker.workspace = true
 pal_async.workspace = true
+tracelimit.workspace = true
 
 anyhow.workspace = true
 futures.workspace = true

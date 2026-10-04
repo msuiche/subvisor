@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+// Copyright (c) Matt Suiche.
 // Licensed under the MIT License.
 
 //! A worker that passively introspects a running Linux guest.
@@ -121,7 +121,7 @@ impl Worker for VmiWorker {
                         }
                         Ok(report) => {
                             for finding in &report.findings {
-                                tracing::warn!(%finding, "vmi finding");
+                                tracelimit::warn_ratelimited!(%finding, "vmi finding");
                             }
                         }
                         Err(err) => {

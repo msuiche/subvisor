@@ -10808,6 +10808,7 @@ dependencies = [
  "mesh",
  "mesh_worker",
  "pal_async",
+ "tracelimit",
  "tracing",
  "vmi_worker_defs",
  "vmm_core_defs",

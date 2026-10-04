@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+// Copyright (c) Matt Suiche.
 // Licensed under the MIT License.
 
 //! Passive introspection of a Linux guest kernel from guest physical memory.
@@ -44,6 +44,10 @@ pub enum Error {
     /// A symbol required by a check is missing from the symbol table.
     #[error("required symbol `{0}` not found")]
     MissingSymbol(&'static str),
+    /// A region derived from the symbol table is empty, inverted, or too
+    /// large.
+    #[error("invalid bounds for kernel region `{0}`")]
+    InvalidRegion(&'static str),
     /// The kernel is not mapped by the provided paging root.
     #[error("kernel address {0:#x} is not mapped by the paging root")]
     KernelNotMapped(u64),

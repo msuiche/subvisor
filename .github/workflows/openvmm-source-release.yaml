@@ -46,7 +46,7 @@ jobs:
       if: runner.os == 'Windows' && runner.arch == 'ARM64'
       name: rustup (Windows ARM64)
       shell: bash
-    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         path: flowey_bootstrap
     - name: Build flowey
@@ -95,7 +95,7 @@ jobs:
         flowey v 0 'flowey_lib_common::git_checkout:1:flowey_lib_common/src/git_checkout.rs' write-to-env github FLOWEY_CONDITION
       shell: bash
     - id: flowey_lib_common__git_checkout__1
-      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: '1'
         path: repo0
@@ -183,7 +183,7 @@ jobs:
         flowey v 1 'flowey_lib_common::git_checkout:1:flowey_lib_common/src/git_checkout.rs' write-to-env github FLOWEY_CONDITION
       shell: bash
     - id: flowey_lib_common__git_checkout__1
-      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: '1'
         path: repo0
@@ -270,7 +270,7 @@ jobs:
         flowey v 2 'flowey_lib_common::cache:1:flowey_lib_common/src/cache.rs' --is-raw-string write-to-env github floweyvar2
       shell: bash
     - id: flowey_lib_common__cache__1
-      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         key: ${{ env.floweyvar1 }}
         path: ${{ env.floweyvar2 }}

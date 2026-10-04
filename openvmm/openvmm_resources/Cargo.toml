@@ -8,7 +8,7 @@ rust-version.workspace = true
 
 [features]
 # Enable gdbstub support.
-gdb = ["openvmm_core/gdb", "dep:debug_worker"]
+gdb = ["openvmm_core/gdb", "dep:debug_worker", "dep:vmi_worker"]
 
 # Enable building with TPM device support.
 tpm = ["dep:tpm_device"]
@@ -96,6 +96,7 @@ vmbus_serial_host.workspace = true
 
 # Workers
 debug_worker = { workspace = true, optional = true }
+vmi_worker = { workspace = true, optional = true }
 openvmm_core.workspace = true
 vnc_worker.workspace = true
 

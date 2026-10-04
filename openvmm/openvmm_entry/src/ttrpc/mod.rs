@@ -1330,6 +1330,8 @@ impl VmService {
             vm_worker: worker,
             vnc_worker: None,
             gdb_worker: None,
+            vmi_worker: None,
+            vmi_control: None,
             diag_inspector: None,
             vtl2_settings: None,
             ged_rpc: None,

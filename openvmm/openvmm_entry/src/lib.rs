@@ -2905,13 +2905,21 @@ async fn run_control_inner(
         )
     }
 
+    // The gdbstub and introspection workers share the debug request channel.
+    let debugger_send = if opt.gdb.is_some() || opt.vmi_symbols.is_some() {
+        let (send, recv) = mesh::channel();
+        vm_config.debugger_rpc = Some(recv);
+        Some(send)
+    } else {
+        None
+    };
+
     // spin up the debug worker
     let gdb_worker = if let Some(port) = opt.gdb {
         let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
             .with_context(|| format!("binding to gdb port {}", port))?;
 
-        let (req_tx, req_rx) = mesh::channel();
-        vm_config.debugger_rpc = Some(req_rx);
+        let req_tx = debugger_send.clone().unwrap();
 
         let gdb_host = mesh
             .make_host("gdb", None)
@@ -2938,6 +2946,30 @@ async fn run_control_inner(
         )
     } else {
         None
+    };
+
+    // spin up the introspection worker
+    let (vmi_worker, vmi_control) = if let Some(path) = &opt.vmi_symbols {
+        let (control_send, control_recv) = mesh::channel();
+        let vmi_host = mesh
+            .make_host("vmi", None)
+            .await
+            .context("spawning vmi process failed")?;
+        let worker = vmi_host
+            .launch_worker(
+                vmi_worker_defs::VMI_WORKER,
+                vmi_worker_defs::VmiParameters {
+                    req_chan: debugger_send.clone().unwrap(),
+                    symbols_path: path.to_string_lossy().into_owned(),
+                    interval_secs: opt.vmi_interval,
+                    control: control_recv,
+                },
+            )
+            .await
+            .context("failed to launch vmi worker")?;
+        (Some(worker), Some(control_send))
+    } else {
+        (None, None)
     };
 
     // spin up the VM
@@ -3018,6 +3050,8 @@ async fn run_control_inner(
         vm_worker,
         vnc_worker,
         gdb_worker,
+        vmi_worker,
+        vmi_control,
         diag_inspector: Some(diag_inspector),
         vtl2_settings: resources.vtl2_settings,
         ged_rpc: resources.ged_rpc.clone(),

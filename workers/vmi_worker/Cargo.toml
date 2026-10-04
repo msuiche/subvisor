@@ -1,0 +1,23 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+[package]
+name = "vmi_worker"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+linux_vmi.workspace = true
+vmi_worker_defs.workspace = true
+vmm_core_defs.workspace = true
+
+mesh.workspace = true
+mesh_worker.workspace = true
+pal_async.workspace = true
+
+anyhow.workspace = true
+futures.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

@@ -423,6 +423,7 @@ hv1_structs = { path = "vm/hv1/hv1_structs" }
 hvdef = { path = "vm/hv1/hvdef" }
 vhd1_defs = { path = "vm/vhd1_defs" }
 kvm = { path = "vm/kvm" }
+linux_vmi = { path = "vm/linux_vmi" }
 loader = { path = "vm/loader" }
 igvmfilegen_config = { path = "vm/loader/igvmfilegen_config" }
 loader_defs = { path = "vm/loader/loader_defs" }
@@ -474,6 +475,8 @@ chipset_device_worker = { path = "workers/chipset_device_worker" }
 chipset_device_worker_defs = { path = "workers/chipset_device_worker_defs" }
 debug_worker = { path = "workers/debug_worker" }
 debug_worker_defs = { path = "workers/debug_worker_defs" }
+vmi_worker = { path = "workers/vmi_worker" }
+vmi_worker_defs = { path = "workers/vmi_worker_defs" }
 profiler_worker = { path = "openhcl/profiler_worker" }
 vnc = { path = "workers/vnc_worker/vnc" }
 vnc_worker = { path = "workers/vnc_worker" }

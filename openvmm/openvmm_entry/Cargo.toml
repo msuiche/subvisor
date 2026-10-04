@@ -18,6 +18,7 @@ chipset_device_worker_defs.workspace = true
 crypto.workspace = true
 cxl_spec.workspace = true
 debug_worker_defs.workspace = true
+vmi_worker_defs.workspace = true
 vmotherboard.workspace = true
 diag_client.workspace = true
 memory_range.workspace = true

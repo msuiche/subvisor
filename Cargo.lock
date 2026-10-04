@@ -4385,6 +4385,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "linux_vmi"
+version = "0.0.0"
+dependencies = [
+ "sha2",
+ "thiserror 2.0.16",
+]
+
+[[package]]
 name = "litrs"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6076,6 +6084,7 @@ dependencies = [
  "vmcore",
  "vmgs_format",
  "vmgs_resources",
+ "vmi_worker_defs",
  "vmm_cli",
  "vmm_core_defs",
  "vmotherboard",
@@ -6247,6 +6256,7 @@ dependencies = [
  "vmbus_serial_host",
  "vmcore",
  "vmgs_broker",
+ "vmi_worker",
  "vnc_worker",
 ]
 
@@ -10786,6 +10796,30 @@ dependencies = [
  "uefi_specs",
  "vmgs",
  "vmgs_format",
+]
+
+[[package]]
+name = "vmi_worker"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "linux_vmi",
+ "mesh",
+ "mesh_worker",
+ "pal_async",
+ "tracing",
+ "vmi_worker_defs",
+ "vmm_core_defs",
+]
+
+[[package]]
+name = "vmi_worker_defs"
+version = "0.0.0"
+dependencies = [
+ "mesh",
+ "mesh_worker",
+ "vmm_core_defs",
 ]
 
 [[package]]

@@ -133,6 +133,9 @@ mesh_worker::register_workers! {
 
     #[cfg(feature = "gdb")]
     debug_worker::DebuggerWorker<std::net::TcpListener>,
+
+    #[cfg(feature = "gdb")]
+    vmi_worker::VmiWorker,
 }
 
 // Hypervisor backend resolvers.

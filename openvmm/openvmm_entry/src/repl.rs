@@ -123,6 +123,14 @@ enum InteractiveCommand {
         path: PathBuf,
     },
 
+    /// Run a guest kernel introspection scan (requires --vmi-symbols).
+    #[clap(visible_alias = "vmi")]
+    VmiScan {
+        /// Discard the baseline and record a new one.
+        #[clap(long)]
+        reset: bool,
+    },
+
     /// Do a pulsed save restore (pause, save, reset, restore, resume) to the VM.
     #[clap(visible_alias = "psr")]
     PulseSaveRestore,
@@ -885,6 +893,17 @@ pub(crate) async fn run_repl(
                     Err(err) => {
                         eprintln!("error: save-snapshot failed: {err:#}");
                     }
+                }
+            }
+            InteractiveCommand::VmiScan { reset } => {
+                match vm_controller
+                    .call(VmControllerRpc::VmiScan, reset)
+                    .await
+                    .map_err(anyhow::Error::from)
+                    .and_then(|r| Ok(r?))
+                {
+                    Ok(report) => print!("{report}"),
+                    Err(err) => eprintln!("error: vmi-scan failed: {err:#}"),
                 }
             }
             InteractiveCommand::DumpState { path } => {

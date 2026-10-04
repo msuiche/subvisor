@@ -1021,6 +1021,24 @@ flags:
     #[clap(long, value_name = "PORT")]
     pub gdb: Option<u16>,
 
+    /// enable passive Linux kernel introspection, using the guest kernel
+    /// symbols in `/proc/kallsyms` or `System.map` format at PATH
+    ///
+    /// The file is read on the first scan, so it can be created after the VM
+    /// starts. Scan on demand with the `vmi-scan` command.
+    #[clap(long, value_name = "PATH")]
+    pub vmi_symbols: Option<PathBuf>,
+
+    /// seconds between periodic introspection scans, or 0 to scan only on
+    /// demand
+    #[clap(
+        long,
+        value_name = "SECS",
+        default_value = "30",
+        requires = "vmi_symbols"
+    )]
+    pub vmi_interval: u64,
+
     /// enable emulated MANA devices with the given network backend (see --net)
     ///
     /// Prefix with `pcie_port=<port_name>:` to expose the nic over emulated PCIe

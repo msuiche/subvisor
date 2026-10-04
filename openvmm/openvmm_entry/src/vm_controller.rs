@@ -59,6 +59,8 @@ pub enum VmControllerRpc {
     SaveSnapshot(Rpc<String, Result<(), mesh::error::RemoteError>>),
     /// Dump VM state (VP registers + memory) to a `.vmrs` file.
     DumpState(Rpc<String, Result<(), mesh::error::RemoteError>>),
+    /// Run a guest introspection scan, optionally resetting the baseline.
+    VmiScan(Rpc<bool, Result<String, mesh::error::RemoteError>>),
     /// Service (update) the VTL2 firmware.
     ServiceVtl2(Rpc<ServiceVtl2Params, Result<u64, mesh::error::RemoteError>>),
     /// Stop the VM and quit.
@@ -115,6 +117,8 @@ pub struct VmController {
     pub(crate) vm_worker: WorkerHandle,
     pub(crate) vnc_worker: Option<WorkerHandle>,
     pub(crate) gdb_worker: Option<WorkerHandle>,
+    pub(crate) vmi_worker: Option<WorkerHandle>,
+    pub(crate) vmi_control: Option<mesh::Sender<vmi_worker_defs::VmiRequest>>,
     pub(crate) diag_inspector: Option<DiagInspector>,
     pub(crate) vtl2_settings: Option<vtl2_settings_proto::Vtl2Settings>,
     pub(crate) ged_rpc: Option<mesh::Sender<get_resources::ged::GuestEmulationRequest>>,
@@ -356,6 +360,16 @@ impl VmController {
             }
         }
 
+        if let Some(mut vmi) = self.vmi_worker.take() {
+            vmi.stop();
+            if let Err(err) = vmi.join().await {
+                tracing::error!(
+                    error = err.as_ref() as &dyn std::error::Error,
+                    "vmi worker join failed"
+                );
+            }
+        }
+
         self.mesh.shutdown().await;
     }
 
@@ -404,6 +418,11 @@ impl VmController {
                 let result = self.handle_dump_state(Path::new(&path)).await;
                 req.complete(result.map_err(mesh::error::RemoteError::new));
             }
+            VmControllerRpc::VmiScan(req) => {
+                let (reset, req) = req.split();
+                let result = self.handle_vmi_scan(reset).await;
+                req.complete(result.map_err(mesh::error::RemoteError::new));
+            }
             VmControllerRpc::ServiceVtl2(req) => {
                 let (params, req) = req.split();
                 let result = self.handle_service_vtl2(params).await;
@@ -427,6 +446,15 @@ impl VmController {
         Ok(())
     }
 
+    async fn handle_vmi_scan(&mut self, reset: bool) -> anyhow::Result<String> {
+        let Some(control) = &self.vmi_control else {
+            anyhow::bail!("introspection is not enabled; pass --vmi-symbols")
+        };
+        Ok(control
+            .call_failable(vmi_worker_defs::VmiRequest::Scan, reset)
+            .await?)
+    }
+
     async fn handle_restart_vnc(&mut self) -> anyhow::Result<()> {
         if let Some(vnc) = &mut self.vnc_worker {
             let vnc_host = self
@@ -448,7 +476,8 @@ impl VmController {
                 resp.field("mesh", &self.mesh)
                     .field("vm", &self.vm_worker)
                     .field("vnc", self.vnc_worker.as_ref())
-                    .field("gdb", self.gdb_worker.as_ref());
+                    .field("gdb", self.gdb_worker.as_ref())
+                    .field("vmi", self.vmi_worker.as_ref());
             }
             InspectTarget::Paravisor => {
                 if let Some(inspector) = &mut self.diag_inspector {

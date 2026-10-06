@@ -2,17 +2,26 @@
 
 [![Subvisor CI](https://github.com/msuiche/subvisor/actions/workflows/subvisor-ci.yml/badge.svg?branch=main)](https://github.com/msuiche/subvisor/actions/workflows/subvisor-ci.yml)
 
-Subvisor monitors a running Linux virtual machine from underneath it. It reads
-the guest's memory and CPU state from the virtual machine monitor, walks the
-guest's page tables itself, and checks the kernel for tampering. Nothing runs
-inside the guest, so a compromised kernel cannot hide from it or turn it off.
+Subvisor inspects a virtual machine from underneath it. It reads the guest's
+memory and CPU state from the virtual machine monitor, walks the guest's page
+tables itself, and makes sense of the kernel without any agent inside the guest.
+It does this two ways:
+
+- **Live**, as an OpenVMM worker that watches a running Linux guest's kernel for
+  tampering (`--vmi-symbols` / `vmi-scan`).
+- **Offline**, as the `subvisor` tool, which reads an OpenVMM snapshot, recovers
+  the guest's symbols, and converts its memory into a debugger-readable dump.
+
+Nothing runs inside the guest, so a compromised kernel cannot hide from it or
+turn it off.
 
 It is built on [OpenVMM](https://github.com/microsoft/openvmm), Microsoft's
 open-source VMM written in Rust. This repository is a fork of OpenVMM with the
 introspection layer added.
 
-> Status: early and experimental. The checks below work end to end on an
-> arm64 Linux guest under macOS (Hypervisor.framework). Expect changes.
+> Status: early and experimental. The live checks and the offline tool both work
+> end to end on an arm64 Linux guest under macOS (Hypervisor.framework). Expect
+> changes.
 
 ## What it checks
 
@@ -89,11 +98,52 @@ openvmm --vmi-symbols kallsyms.txt --vmi-interval 30 <usual VM options>
 
 More detail: [Guest Introspection](Guide/src/user_guide/openvmm/vm_introspection.md).
 
+## Offline snapshot analysis
+
+The `subvisor` tool reads an OpenVMM snapshot directory (`manifest.bin`,
+`state.bin`, `memory.bin`) and makes sense of it with no agent and no
+guest-supplied symbols. It is a separate binary, so it works on snapshots from
+any OpenVMM fork without modifying the VMM.
+
+```shell
+cargo build -p subvisor_dump
+
+# Identify the guest, kernel, and symbol source.
+subvisor info   path/to/snapshot
+
+# Print the kernel symbol table, recovered from memory.
+subvisor symbols path/to/snapshot
+
+# Convert memory into a kdump-style ELF core for crash / drgn.
+subvisor dump   path/to/snapshot -o guest.core
+```
+
+How the symbols are recovered, which is the hard part of turning a raw image
+into something a debugger understands:
+
+- **Linux.** The tool scans `memory.bin` for the kernel's **VMCOREINFO** block
+  (the kernel's self-description for kdump, the Linux counterpart of Windows'
+  `KdDebuggerDataBlock`). That block gives the KASLR offset, the page-table
+  root, and the exact addresses of the `kallsyms` tables, which the tool then
+  decodes from memory. On the arm64 test guest it recovers all 78,534 symbols,
+  matching the guest's own `/proc/kallsyms`. The ELF core embeds VMCOREINFO as a
+  note, so `crash` and `drgn` read symbols from it exactly as from a real
+  vmcore.
+- **Windows.** There is no VMCOREINFO, so the tool finds `ntoskrnl` from the
+  saved `IDTR`, then reads the image's CodeView (`RSDS`) record to report the
+  PDB name and signature. That is the identity a debugger uses to fetch symbols
+  from the Microsoft symbol server. (Writing a native `.dmp` is future work; see
+  the roadmap.)
+
+`subvisor info` is also an integrity signal in its own right: a snapshot whose
+VMCOREINFO, page tables, and kallsyms do not agree has been tampered with.
+
 ## Limitations
 
-- **The guest supplies the symbols.** A compromised kernel could falsify
-  `/proc/kallsyms`. Recovering the symbol table directly from guest memory is
-  next on the list.
+- **The live worker still takes supplied symbols.** It reads `/proc/kallsyms`
+  via `--vmi-symbols`, which a compromised kernel could falsify. The offline
+  tool already recovers symbols from memory via VMCOREINFO; folding that into
+  the live worker is next, which also removes the flag.
 - **Per-page findings.** A finding names the symbol at the start of the
   modified page, not necessarily the modified function.
 - **No process or module checks yet.** Walking kernel structures needs type
@@ -105,13 +155,15 @@ More detail: [Guest Introspection](Guide/src/user_guide/openvmm/vm_introspection
 
 ## Roadmap
 
-1. Recover kallsyms from guest memory, removing the dependency on
-   guest-supplied symbols.
+1. Use the offline tool's VMCOREINFO-based symbol recovery in the live worker,
+   removing the `--vmi-symbols` dependency on guest-supplied symbols.
 2. Byte-level diffs against a stored baseline, giving the exact offset plus
    original and modified bytes.
 3. Process, module, and eBPF cross-view checks using in-memory BTF.
 4. Event telemetry from hardware breakpoints that does not stop the guest.
-5. Run the engine inside a paravisor (OpenHCL VTL2 or COCONUT-SVSM) to monitor
+5. A native Windows `.dmp` writer (decode `KdDebuggerDataBlock`), and signed
+   verification records for snapshot templates before they are shared.
+6. Run the engine inside a paravisor (OpenHCL VTL2 or COCONUT-SVSM) to monitor
    confidential VMs, where the host cannot read guest memory.
 
 ## Repository layout
@@ -121,10 +173,11 @@ Everything outside the paths below is upstream OpenVMM. The fork tracks
 
 | Path | Contents |
 |---|---|
-| `vm/linux_vmi/` | Introspection engine |
-| `workers/vmi_worker/`, `workers/vmi_worker_defs/` | OpenVMM worker and its definitions |
+| `vm/linux_vmi/` | Introspection engine (page walk, symbols, scanner) |
+| `vm/subvisor_dump/` | Offline snapshot tool: VMCOREINFO, kallsyms, ELF core, Windows PDB |
+| `workers/vmi_worker/`, `workers/vmi_worker_defs/` | Live OpenVMM worker and its definitions |
 | `openvmm/openvmm_entry/` | CLI flags, `vmi-scan` command, worker launch |
-| `scripts/subvisor_e2e.py` | End-to-end test |
+| `scripts/subvisor_e2e.py` | Live end-to-end test |
 | `.github/workflows/subvisor-ci.yml` | CI for the Subvisor crates |
 
 The OpenVMM workflows inherited from upstream are disabled in this repository:

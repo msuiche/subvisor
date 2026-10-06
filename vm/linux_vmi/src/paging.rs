@@ -84,6 +84,13 @@ impl<'a> Translator<'a> {
     fn entry(&mut self, table: u64, index: u64) -> Result<u64, Error> {
         let page = table & !(PAGE_SIZE - 1);
         let base = ((table - page) / 8) as usize;
+        // `base` comes from sub-page bits in a table pointer; combined with a
+        // 9-bit index it must stay within the 512-entry table. Guest-controlled
+        // roots can violate this, so fail closed instead of indexing out of
+        // bounds.
+        if base + index as usize >= 512 {
+            return Err(Error::UnsupportedPaging("page-table pointer is misaligned"));
+        }
         if !self.tables.contains_key(&page) {
             let mut buf = [0u8; PAGE_SIZE as usize];
             self.mem
@@ -117,8 +124,10 @@ impl<'a> Translator<'a> {
 
         let levels = (va_bits - 12).div_ceil(9);
         let start_level = 4 - levels;
-        // Mask off CnP (bit 0) and the ASID (bits 63:48).
-        let mut table = ttbr1 & 0x0000_ffff_ffff_fffe;
+        // Page-align the root, dropping the ASID (bits 63:48), CnP (bit 0), and
+        // the architecturally-reserved sub-page bits (11:1). A guest can set the
+        // reserved bits; keeping them would offset into the table array.
+        let mut table = ttbr1 & OA_MASK;
         for level in start_level..=3 {
             let shift = 12 + 9 * (3 - level);
             let bits = if level == start_level {

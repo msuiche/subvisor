@@ -1,0 +1,25 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+[package]
+name = "subvisor_dump"
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "subvisor_dump"
+path = "src/lib.rs"
+
+[[bin]]
+name = "subvisor"
+path = "src/main.rs"
+
+[dependencies]
+linux_vmi.workspace = true
+
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+
+[lints]
+workspace = true

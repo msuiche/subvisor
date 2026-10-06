@@ -7,6 +7,8 @@ default-members = ["openvmm/openvmm"]
 members = [
   # openvmm
   "openvmm/openvmm",
+  # subvisor
+  "vm/subvisor_dump",
   # openvmm_vhost
   "openvmm_vhost/openvmm_vhost",
   # repo tooling

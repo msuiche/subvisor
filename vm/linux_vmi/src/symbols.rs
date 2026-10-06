@@ -80,6 +80,11 @@ impl SymbolTable {
         self.symbols.is_empty()
     }
 
+    /// Iterates over the symbols in address order.
+    pub fn iter(&self) -> impl Iterator<Item = &Symbol> {
+        self.symbols.iter()
+    }
+
     /// Looks up a symbol's address by name.
     pub fn addr(&self, name: &str) -> Option<u64> {
         self.by_name.get(name).map(|&i| self.symbols[i].addr)

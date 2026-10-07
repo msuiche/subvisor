@@ -15,6 +15,8 @@ It does this two ways:
 Nothing runs inside the guest, so a compromised kernel cannot hide from it or
 turn it off.
 
+![The subvisor tool on a real OpenVMM snapshot: it identifies a Linux 6.18 guest, recovers 78,534 kallsyms from memory via VMCOREINFO, writes a kdump-style ELF core, and the core validates as ET_CORE with a VMCOREINFO + NT_PRSTATUS note.](docs/subvisor-demo.gif)
+
 It is built on [OpenVMM](https://github.com/microsoft/openvmm), Microsoft's
 open-source VMM written in Rust. This repository is a fork of OpenVMM with the
 introspection layer added.
